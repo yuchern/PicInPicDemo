@@ -1,0 +1,8 @@
+inhibit_all_warnings! # 消除第三方库警告
+
+platform :ios, '16.1'
+
+target 'VisionTestDemo' do
+  use_frameworks!
+  pod 'Masonry'
+end
