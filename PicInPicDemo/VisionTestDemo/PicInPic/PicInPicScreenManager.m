@@ -18,6 +18,7 @@
 @property (nonatomic, strong) PicInPicScreenView *screenView;   //控制器中显示的
 @property (nonatomic, strong) PicInPicScreenView *picInPicView; //画中画中现实的
 @property (nonatomic, assign) BOOL isOpenPicInPic;
+@property (nonatomic, strong) NSMutableArray <UIWindow *>*suspectedWindows;    //疑似画中画的window
 
 @end
 
@@ -56,6 +57,7 @@
 - (void)removeScreenView {
     [self.screenView removeFromSuperview];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.suspectedWindows removeAllObjects];
 }
 
 #pragma mark - 画中画
@@ -102,12 +104,34 @@
     id object = notification.object;
     if ([object isKindOfClass:NSClassFromString(@"PGHostedWindow")]) {
         self.firstWindow = notification.object;
-        NSLog(@"更新了Windows");
         [[NSNotificationCenter defaultCenter] removeObserver:self
                                                         name:UIWindowDidBecomeVisibleNotification
                                                       object:nil];
-        
+    } else if ([object isKindOfClass:[UIWindow class]]) {
+        /// 不要在这里判断window的宽高，这里有可能window都还没渲染，如果还没渲染，则通过level，topwindow，遍历所有windows都不准确
+        UIWindow *targetWindow = (UIWindow *)object;
+        [self.suspectedWindows addObject:targetWindow];
     }
+}
+
+- (UIWindow *)filterTargetWindow {
+    for (UIWindow *window in self.suspectedWindows) {
+        if ([window isKindOfClass:NSClassFromString(@"PGHostedWindow")]) {
+            return window;
+        }
+    }
+    for (UIWindow *window in self.suspectedWindows) {
+        if (window.windowLevel == -10000000) {
+            return window;
+        }
+    }
+    for (UIWindow *window in self.suspectedWindows) {
+        //这里只是根据视频源来大致判断高度，如果视频源更换了高度较大的，要更改这个高度
+        if (window.frame.size.height < 300) {
+            return window;
+        }
+    }
+    return self.suspectedWindows.firstObject;
 }
 
 - (void)changePicFrame {
@@ -151,17 +175,21 @@
 }
 #pragma mark - 画中画代理
 - (void)pictureInPictureControllerWillStartPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
-    NSLog(@"即将开启画中画功能");
+    
+}
+
+- (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
+    
+    if (!self.firstWindow) {
+        self.firstWindow = [self filterTargetWindow];
+        [self.suspectedWindows removeAllObjects];
+    }
     if (self.firstWindow) {
         [self.firstWindow addSubview:self.picInPicView];
         [self.picInPicView mas_remakeConstraints:^(MASConstraintMaker *make) {
             make.edges.mas_equalTo(self.firstWindow);
         }];
     }
-}
-
-- (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
-    NSLog(@"已经开启画中画功能");
 }
 
 - (void)pictureInPictureControllerWillStopPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
@@ -191,5 +219,12 @@
         _picInPicView = [[PicInPicScreenView alloc] init];
     }
     return _picInPicView;
+}
+
+- (NSMutableArray *)suspectedWindows {
+    if (_suspectedWindows == nil) {
+        _suspectedWindows = [NSMutableArray new];
+    }
+    return _suspectedWindows;
 }
 @end
